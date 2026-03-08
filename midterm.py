@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import random
 import math
 from shapely.geometry import Polygon, Point, LineString, box
@@ -159,51 +159,51 @@ class ObstacleAGP:
             
         return (visible_count / len(self.sensors)) + penalty
 
-    def render(self, solution, filename="solution.jpg"):
-        guards = [Point(solution[i], solution[i+1]) for i in range(0, len(solution), 2)]
+    # def render(self, solution, filename="solution.jpg"):
+    #     guards = [Point(solution[i], solution[i+1]) for i in range(0, len(solution), 2)]
         
-        colors = []
-        for s in self.sensors:
-            seen = False
-            for g in guards:
-                ray = LineString([g, s])
+    #     colors = []
+    #     for s in self.sensors:
+    #         seen = False
+    #         for g in guards:
+    #             ray = LineString([g, s])
                 
-                blocked = False
-                for w in self.walls:
-                    if ray.intersects(w):
-                        blocked = True
-                        break
-                if blocked: continue
+    #             blocked = False
+    #             for w in self.walls:
+    #                 if ray.intersects(w):
+    #                     blocked = True
+    #                     break
+    #             if blocked: continue
 
-                if self.room.contains(ray) or not ray.crosses(self.room.boundary):
-                    seen = True
-                    break
-            colors.append('gold' if seen else 'black')
+    #             if self.room.contains(ray) or not ray.crosses(self.room.boundary):
+    #                 seen = True
+    #                 break
+    #         colors.append('gold' if seen else 'black')
 
-        fig, ax = plt.subplots(figsize=(8, 8))
+    #     fig, ax = plt.subplots(figsize=(8, 8))
     
-        x, y = self.room.exterior.xy
-        ax.fill(x, y, fc='#cccccc', ec='black', linewidth=2, label="Walls")
+    #     x, y = self.room.exterior.xy
+    #     ax.fill(x, y, fc='#cccccc', ec='black', linewidth=2, label="Walls")
         
-        for i, w in enumerate(self.walls):
-            wx, wy = w.xy
-            label = "Obstacles" if i == 0 else None
-            ax.plot(wx, wy, 'r-', linewidth=3, label=label)
+    #     for i, w in enumerate(self.walls):
+    #         wx, wy = w.xy
+    #         label = "Obstacles" if i == 0 else None
+    #         ax.plot(wx, wy, 'r-', linewidth=3, label=label)
         
-        xs = [s.x for s in self.sensors]
-        ys = [s.y for s in self.sensors]
-        ax.scatter(xs, ys, c=colors, s=25, marker='s', alpha=1)
+    #     xs = [s.x for s in self.sensors]
+    #     ys = [s.y for s in self.sensors]
+    #     ax.scatter(xs, ys, c=colors, s=25, marker='s', alpha=1)
         
-        gx = [g.x for g in guards]
-        gy = [g.y for g in guards]
-        ax.scatter(gx, gy, c='blue', s=250, marker='*', edgecolors='white', zorder=10, label="Guards")
+    #     gx = [g.x for g in guards]
+    #     gy = [g.y for g in guards]
+    #     ax.scatter(gx, gy, c='blue', s=250, marker='*', edgecolors='white', zorder=10, label="Guards")
         
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.set_title(f"Generated Map (Tiles={len(self.room.exterior.coords)//4}, Walls={len(self.walls)})")
-        ax.legend(loc='upper right')
-        plt.savefig(filename)
-        print(f"Visualization saved to {filename}")
+    #     ax.set_xlim(0, 1)
+    #     ax.set_ylim(0, 1)
+    #     ax.set_title(f"Generated Map (Tiles={len(self.room.exterior.coords)//4}, Walls={len(self.walls)})")
+    #     ax.legend(loc='upper right')
+    #     plt.savefig(filename)
+    #     print(f"Visualization saved to {filename}")
 
 if __name__ == "__main__":
     N_GUARDS = 2
@@ -245,5 +245,5 @@ if __name__ == "__main__":
     best_agent = optimizer.solve(problem_dict)
     
     print(f"Final Cost: {best_agent.target.fitness:.4f}")
-    problem.render(best_agent.solution)
+    # problem.render(best_agent.solution)
     print(best_agent.solution)
