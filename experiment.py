@@ -6,6 +6,7 @@ import time
 import random
 import logging
 import csv
+import pickle
 
 import numpy as np
 from tqdm import tqdm
@@ -26,13 +27,27 @@ log = logging.getLogger(__name__)
 
 EPOCH = 100
 POP_SIZE = 50
-N_TRIALS = 10
+N_TRIALS = 5
 SEED_BASE = 42
 N_GUARDS = 2
-GRID_RES = 20
-WALL_COUNTS = list(range(10, 21))  # complexity: 1 to 10 walls
+GRID_RES = 10
+WALL_COUNTS = list(range(10, 21, 2))  # complexity: 1 to 10 walls
 WALL_SEED = 100  # base seed for wall generation (deterministic per wall count)
-MAX_ALGOS = None  # set to an int to limit the number of algorithms (None = all)
+CHECKPOINT_FILE = "checkpoint.pkl"  # checkpoint file for resuming experiments
+
+# ── 10 fast algorithms (module_name, class_name) ───────────────────
+SELECTED_ALGOS = [
+    ("original_eco", "OriginalECO"),   # Exam Cheating Optimization
+    ("original_fpa", "OriginalFPA"),   # Flower Pollination Algorithm
+    ("original_hs",  "OriginalHS"),    # Harmony Search
+    ("original_sma", "OriginalSMA"),   # Slime Mould Algorithm
+    ("original_bbo", "OriginalBBO"),   # Biogeography-Based Optimization
+    ("original_sos", "OriginalSOS"),   # Symbiotic Organisms Search
+    ("original_iwo", "OriginalIWO"),   # Invasive Weed Optimization
+    ("original_soa", "OriginalSOA"),   # Seagull Optimization Algorithm
+    ("original_tsa", "OriginalTSA"),   # Tunicate Swarm Algorithm
+    ("original_eoa", "OriginalEOA"),   # Earthworm Optimization Algorithm
+]
 
 # ── Problem builder ─────────────────────────────────────────────────
 def build_square_problem(n_walls):
@@ -58,45 +73,73 @@ def make_problem_dict(agp):
         "log_to": None,
     }
 
-# ── Discover all original_*.py algorithms ───────────────────────────
+# ── Load selected algorithms ─────────────────────────────────────────
 def discover_algorithms():
-    pattern = os.path.join(os.path.dirname(__file__) or ".", "original_*.py")
     algo_map = {}
-    log.info(f"Scanning for algorithms: {pattern}")
-    for filepath in sorted(glob.glob(pattern)):
-        module_name = os.path.splitext(os.path.basename(filepath))[0]
-        log.debug(f"  Importing {module_name}")
-        mod = importlib.import_module(module_name)
-        for attr_name in dir(mod):
-            obj = getattr(mod, attr_name)
-            if (isinstance(obj, type)
-                    and attr_name.startswith("Original")
-                    and hasattr(obj, "evolve")):
-                algo_map[attr_name] = obj
-                log.info(f"  Found algorithm: {attr_name} (from {module_name})")
-    log.info(f"Total algorithms discovered: {len(algo_map)}")
+    log.info(f"Loading {len(SELECTED_ALGOS)} selected algorithms")
+    for module_name, class_name in SELECTED_ALGOS:
+        try:
+            mod = importlib.import_module(module_name)
+            cls = getattr(mod, class_name)
+            algo_map[class_name] = cls
+            log.info(f"  Loaded {class_name} from {module_name}")
+        except Exception as e:
+            log.warning(f"  Failed to load {class_name} from {module_name}: {e}")
+    log.info(f"Total algorithms loaded: {len(algo_map)}")
     return algo_map
+
+# ── Checkpoint helpers ──────────────────────────────────────────────
+def save_checkpoint(all_results, algo_names, completed_walls):
+    data = {
+        "all_results": all_results,
+        "algo_names": algo_names,
+        "completed_walls": completed_walls,
+    }
+    tmp = CHECKPOINT_FILE + ".tmp"
+    with open(tmp, "wb") as f:
+        pickle.dump(data, f)
+    os.replace(tmp, CHECKPOINT_FILE)
+    log.info(f"Checkpoint saved ({len(completed_walls)} wall counts done)")
+
+def load_checkpoint():
+    if not os.path.exists(CHECKPOINT_FILE):
+        return None
+    try:
+        with open(CHECKPOINT_FILE, "rb") as f:
+            data = pickle.load(f)
+        log.info(f"Checkpoint loaded — resuming after wall counts {data['completed_walls']}")
+        return data
+    except Exception as e:
+        log.warning(f"Checkpoint file corrupt, starting fresh: {e}")
+        return None
 
 # ── Run experiment across all wall counts ───────────────────────────
 def run_experiment():
     algos = discover_algorithms()
     algo_names = sorted(algos.keys())
-    if MAX_ALGOS is not None:
-        algo_names = algo_names[:MAX_ALGOS]
-        log.info(f"Limiting to first {MAX_ALGOS} algorithm(s)")
     total_jobs = len(WALL_COUNTS) * len(algo_names) * N_TRIALS
     log.info(f"Algorithms: {', '.join(algo_names)}")
     log.info(f"Experiment plan: {len(WALL_COUNTS)} wall counts × {len(algo_names)} algos × {N_TRIALS} trials = {total_jobs} runs")
     log.info(f"Settings: EPOCH={EPOCH}, POP_SIZE={POP_SIZE}, N_GUARDS={N_GUARDS}, GRID_RES={GRID_RES}")
 
-    all_results = {}
-    completed = 0
+    # ── Try to resume from checkpoint ───────────────────────────────
+    ckpt = load_checkpoint()
+    if ckpt is not None:
+        all_results = ckpt["all_results"]
+        completed_walls = set(ckpt["completed_walls"])
+        remaining = [nw for nw in WALL_COUNTS if nw not in completed_walls]
+        completed = len(completed_walls) * len(algo_names) * N_TRIALS
+        log.info(f"Resuming: {len(completed_walls)} wall counts done, {len(remaining)} remaining")
+    else:
+        all_results = {}
+        remaining = list(WALL_COUNTS)
+        completed = 0
 
-    pbar = tqdm(total=total_jobs, desc="Overall", unit="run", position=0)
+    pbar = tqdm(total=total_jobs, desc="Overall", unit="run", position=0, initial=completed)
 
-    for wall_idx, n_walls in enumerate(WALL_COUNTS):
+    for wall_idx, n_walls in enumerate(remaining):
         log.info(f"{'═'*60}")
-        log.info(f"Wall count {n_walls}/{WALL_COUNTS[-1]} ({wall_idx+1}/{len(WALL_COUNTS)})")
+        log.info(f"Wall count {n_walls}/{WALL_COUNTS[-1]}")
         log.info(f"{'═'*60}")
         agp = build_square_problem(n_walls)
         prob = make_problem_dict(agp)
@@ -142,8 +185,18 @@ def run_experiment():
         all_results[n_walls] = wall_results
         log.info(f"  Wall count {n_walls} complete — {len(wall_results)}/{len(algo_names)} algos succeeded")
 
+        # ── Save checkpoint after each wall count ──────────────────
+        done_walls = [nw for nw in WALL_COUNTS if nw in all_results]
+        save_checkpoint(all_results, algo_names, done_walls)
+
     pbar.close()
     log.info(f"Experiment finished: {completed}/{total_jobs} runs completed")
+
+    # ── Clean up checkpoint on successful completion ───────────────
+    if os.path.exists(CHECKPOINT_FILE):
+        os.remove(CHECKPOINT_FILE)
+        log.info("Checkpoint file removed (experiment complete)")
+
     return all_results, algo_names
 
 # ── 1) Wins CSV (rows = wall counts, cols = algorithms) ────────────
